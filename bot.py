@@ -4,18 +4,34 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from flask import Flask
 import threading
+import asyncio
+import logging
 
+# ------------------------------
+# Load environment variables
+# ------------------------------
 load_dotenv()
-
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")
 
+# ------------------------------
+# Logging setup (for Render)
+# ------------------------------
+logging.basicConfig(level=logging.INFO)
+
+# ------------------------------
 # Hugging Face OpenAI-compatible client
+# ------------------------------
 client_ai = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN,
 )
-# Tiny web server for Render
+
+MODEL = "meta-llama/Llama-3.1-8B-Instruct:novita"
+
+# ------------------------------
+# Tiny Flask server for Render
+# ------------------------------
 app = Flask("bot")
 
 @app.route("/")
@@ -23,33 +39,36 @@ def home():
     return "Bot is alive 💜"
 
 def run_web():
-    print("Starting Flask web server on port 10000...")
+    logging.info("Starting Flask web server on port 10000...")
     app.run(host="0.0.0.0", port=10000)
 
+# Start Flask in a separate daemon thread
+threading.Thread(target=run_web, daemon=True).start()
 
-# Start the Flask server in a separate thread
-threading.Thread(target=run_web).start()
+# ------------------------------
 # Discord client setup
+# ------------------------------
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-MODEL = "meta-llama/Llama-3.1-8B-Instruct:novita"
-
-# Memory dictionary to keep conversation per user
+# ------------------------------
+# Memory dictionary per user
+# ------------------------------
 conversation_memory = {}  # key = user.id, value = list of messages
 
+# ------------------------------
+# Discord events
+# ------------------------------
 @client.event
 async def on_ready():
-    print(f"Logged in as {client.user}")
+    logging.info(f"Logged in as {client.user}")
 
 def get_response(user_id, prompt):
-    """Gets full response from Hugging Face API (no streaming)."""
-    
+    """Blocking function to get response from Hugging Face API."""
     if user_id not in conversation_memory:
         conversation_memory[user_id] = []
 
-    # Build message history for context
     messages = [
         {
             "role": "system",
@@ -64,7 +83,6 @@ def get_response(user_id, prompt):
         }
     ] + conversation_memory[user_id] + [{"role": "user", "content": prompt}]
 
-    # Send request and get full response
     response = client_ai.chat.completions.create(
         model=MODEL,
         messages=messages,
@@ -78,7 +96,7 @@ def get_response(user_id, prompt):
     conversation_memory[user_id].append({"role": "user", "content": prompt})
     conversation_memory[user_id].append({"role": "assistant", "content": full_reply})
 
-    # Limit memory to last 8 exchanges (16 messages)
+    # Keep last 8 exchanges per user
     if len(conversation_memory[user_id]) > 16:
         conversation_memory[user_id] = conversation_memory[user_id][-16:]
 
@@ -86,14 +104,14 @@ def get_response(user_id, prompt):
 
 @client.event
 async def on_message(message):
-    # Ignore bot's own messages
+    # Ignore bot itself
     if message.author == client.user:
         return
 
     user_id = message.author.id
     prompt = message.content.strip()
-    print(userid,":",prompt)
-    # Optional: Reset command
+    logging.info(f"{user_id} : {prompt}")
+
     if prompt.lower() == "!reset":
         conversation_memory[user_id] = []
         await message.channel.send("I've cleared our previous chats. Starting fresh! 💜")
@@ -103,13 +121,17 @@ async def on_message(message):
         return
 
     try:
-        reply = get_response(user_id, prompt)
+        # Run blocking API call in thread to prevent freezing
+        reply = await asyncio.to_thread(get_response, user_id, prompt)
+
         if len(reply) > 1900:
             reply = reply[:1900] + "..."
         await message.channel.send(reply)
     except Exception as e:
+        logging.error(f"Error responding to {user_id}: {e}")
         await message.channel.send(f"Error: {e}")
 
+# ------------------------------
+# Start Discord bot
+# ------------------------------
 client.run(DISCORD_TOKEN)
-
-
