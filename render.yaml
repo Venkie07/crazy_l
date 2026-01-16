@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: CrazylearnerBot
+    env: python
+    region: oregon
+    plan: free
+    branch: main
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+        value: ""
+      - key: HF_TOKEN
+        sync: false
+        value: ""
