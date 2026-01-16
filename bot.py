@@ -110,7 +110,7 @@ async def on_message(message):
 
     user_id = message.author.id
     prompt = message.content.strip()
-    logging.info(f"{user_id} : {prompt}")
+    logging.info(f"{message.author} : {prompt}")
 
     if prompt.lower() == "!reset":
         conversation_memory[user_id] = []
@@ -135,3 +135,4 @@ async def on_message(message):
 # Start Discord bot
 # ------------------------------
 client.run(DISCORD_TOKEN)
+
