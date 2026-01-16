@@ -2,6 +2,8 @@ import os
 import discord
 from dotenv import load_dotenv
 from openai import OpenAI
+from flask import Flask
+import threading
 
 load_dotenv()
 
@@ -13,7 +15,20 @@ client_ai = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN,
 )
+# Tiny web server for Render
+app = Flask("bot")
 
+@app.route("/")
+def home():
+    return "Bot is alive 💜"
+
+def run_web():
+    print("Starting Flask web server on port 10000...")
+    app.run(host="0.0.0.0", port=10000)
+
+
+# Start the Flask server in a separate thread
+threading.Thread(target=run_web).start()
 # Discord client setup
 intents = discord.Intents.default()
 intents.message_content = True
@@ -77,7 +92,7 @@ async def on_message(message):
 
     user_id = message.author.id
     prompt = message.content.strip()
-
+    print(userid,":",prompt)
     # Optional: Reset command
     if prompt.lower() == "!reset":
         conversation_memory[user_id] = []
@@ -96,3 +111,5 @@ async def on_message(message):
         await message.channel.send(f"Error: {e}")
 
 client.run(DISCORD_TOKEN)
+
+
