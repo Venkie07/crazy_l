@@ -1,7 +1,7 @@
 import os
 import discord
 from dotenv import load_dotenv
-from openai import OpenAI
+from groq import Groq
 from flask import Flask
 import threading
 import asyncio
@@ -12,7 +12,10 @@ import logging
 # ------------------------------
 load_dotenv()
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-HF_TOKEN = os.getenv("HF_TOKEN")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+if not DISCORD_TOKEN or not GROQ_API_KEY:
+    raise RuntimeError("DISCORD_TOKEN or GROQ_API_KEY is missing!")
 
 # ------------------------------
 # Logging setup (for Render)
@@ -20,14 +23,11 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 logging.basicConfig(level=logging.INFO)
 
 # ------------------------------
-# Hugging Face OpenAI-compatible client
+# Groq client
 # ------------------------------
-client_ai = OpenAI(
-    base_url="https://router.huggingface.co/v1",
-    api_key=HF_TOKEN,
-)
+client_ai = Groq(api_key=GROQ_API_KEY)
 
-MODEL = "meta-llama/Llama-3.1-8B-Instruct:novita"
+MODEL = "openai/gpt-oss-20b"
 
 # ------------------------------
 # Tiny Flask server for Render
@@ -42,7 +42,6 @@ def run_web():
     logging.info("Starting Flask web server on port 10000...")
     app.run(host="0.0.0.0", port=10000)
 
-# Start Flask in a separate daemon thread
 threading.Thread(target=run_web, daemon=True).start()
 
 # ------------------------------
@@ -55,7 +54,7 @@ client = discord.Client(intents=intents)
 # ------------------------------
 # Memory dictionary per user
 # ------------------------------
-conversation_memory = {}  # key = user.id, value = list of messages
+conversation_memory = {}
 
 # ------------------------------
 # Discord events
@@ -65,7 +64,8 @@ async def on_ready():
     logging.info(f"Logged in as {client.user}")
 
 def get_response(user_id, prompt):
-    """Blocking function to get response from Hugging Face API."""
+    """Blocking function to get response from Groq API."""
+
     if user_id not in conversation_memory:
         conversation_memory[user_id] = []
 
@@ -90,7 +90,7 @@ def get_response(user_id, prompt):
         temperature=0.6,
     )
 
-    full_reply = response.choices[0].message.content
+    full_reply = response.choices[0].message.content or ""
 
     # Update memory
     conversation_memory[user_id].append({"role": "user", "content": prompt})
@@ -126,13 +126,14 @@ async def on_message(message):
 
         if len(reply) > 1900:
             reply = reply[:1900] + "..."
+
         await message.channel.send(reply)
+
     except Exception as e:
         logging.error(f"Error responding to {user_id}: {e}")
-        await message.channel.send(f"Error: {e}")
+        await message.channel.send("Something went wrong while contacting my AI brain. Please try again 💜")
 
 # ------------------------------
 # Start Discord bot
 # ------------------------------
 client.run(DISCORD_TOKEN)
-
