@@ -47,7 +47,7 @@ Crazylearner/
 
 ```bash
 git clone https://github.com/Venkie07/crazy_l.git
-cd Crazylearner
+cd crazy_l
 ```
 
 ### 2. Create a Virtual Environment
